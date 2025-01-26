@@ -5,9 +5,39 @@ import os
 from lxml import etree as ET
 from neo4j import GraphDatabase
 import time
+import logging
+import json
+from datetime import datetime
+
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create file handlers for different log types
+success_handler = logging.FileHandler('logs/successful_responses.log')
+error_handler = logging.FileHandler('logs/error.log')
+rolling_handler = logging.FileHandler('logs/rolling_context.log')
+complete_handler = logging.FileHandler('logs/complete_run.log')
+
+# Set formats for each handler
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+success_handler.setFormatter(formatter)
+error_handler.setFormatter(formatter)
+rolling_handler.setFormatter(formatter)
+complete_handler.setFormatter(formatter)
+
+# Add handlers to logger
+logger.addHandler(success_handler)
+logger.addHandler(error_handler)
+logger.addHandler(rolling_handler)
+logger.addHandler(complete_handler)
 
 # Load environment variables
 load_dotenv()
+
 
 # Initialize OpenAI client for Deepseek
 client = OpenAI(
@@ -114,7 +144,18 @@ def validate_xml_response(xml_content, schema_path='schema.xsd'):
         print(f"XML validation failed: {e}")
         return False
 
-def analyze_chunk(chunk, context):
+def escape_xml_chars(text):
+    """Escape special characters for XML"""
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&apos;')
+
+def ensure_integer_position(position):
+    """Convert position to integer, defaulting to chunk_number * 1000 if not a valid integer"""
+    try:
+        return int(position)
+    except (ValueError, TypeError):
+        return 1000  # Default position if not a valid integer
+
+def analyze_chunk(chunk, context, chunk_number):
     """Process document chunk with Deepseek AI"""
     system_prompt = """
     Analyze technical documentation and return results in the following XML format:
@@ -183,11 +224,16 @@ def analyze_chunk(chunk, context):
         model="deepseek-chat",
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Context: {context}\n\nChunk: {chunk}"}
+            {"role": "user", "content": f"Context: {escape_xml_chars(context)}\n\nChunk: {escape_xml_chars(chunk)}"}
         ],
         stream=False
     )
-    return parse_xml_response(response.choices[0].message.content)
+    response_content = response.choices[0].message.content
+    
+    # Log successful response
+    logger.info(f"Successful response for chunk {chunk_number}:\n{response_content}")
+    
+    return parse_xml_response(response_content)
 
 def parse_xml_response(xml_content):
     """Parse XML response into structured data with enhanced metadata"""
@@ -208,7 +254,7 @@ def parse_xml_response(xml_content):
             'description': concept.find('description').text,
             'confidence': float(concept.find('confidence').text),
             'source': {
-                'position': int(source_elem.find('position').text),
+                'position': ensure_integer_position(source_elem.find('position').text),
                 'context': source_elem.find('context').text
             },
             'hierarchy': {
@@ -228,6 +274,14 @@ def parse_xml_response(xml_content):
         strength_elem = metadata_elem.find('bidirectional_strength')
         provenance_elem = metadata_elem.find('provenance')
         
+        # Get properties or create empty dict if missing
+        properties = {
+            prop.get('name'): prop.text
+            for prop in rel.findall('./properties/property')
+        }
+        if not properties:
+            properties = {'default': 'No additional properties'}
+
         relationships.append({
             'source': rel.find('source').text,
             'type': rel.find('type').text,
@@ -252,10 +306,7 @@ def parse_xml_response(xml_content):
                     'extraction_method': provenance_elem.find('extraction_method').text
                 }
             },
-            'properties': {
-                prop.get('name'): prop.text
-                for prop in rel.findall('./properties/property')
-            }
+            'properties': properties
         })
     
     return {'concepts': concepts, 'relationships': relationships}
@@ -305,14 +356,15 @@ def update_context(current_context, xml_result, max_size=15):
         current_context.sort(key=lambda x: x['confidence'], reverse=True)
         current_context[:] = current_context[:max_size]
 
-def process_with_recovery(chunk, context, retries=3):
+def process_with_recovery(chunk, context, chunk_number, retries=3):
     """Process chunk with retry mechanism"""
     for attempt in range(retries):
         try:
-            xml_result = analyze_chunk(chunk, context)
+            xml_result = analyze_chunk(chunk, context, chunk_number)
             return xml_result
         except Exception as e:
-            print(f"Attempt {attempt + 1} failed: {e}")
+            error_msg = f"Attempt {attempt + 1} failed for chunk {chunk_number}: {e}"
+            logger.error(error_msg)
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)  # Exponential backoff
             else:
@@ -320,18 +372,24 @@ def process_with_recovery(chunk, context, retries=3):
 
 def process_document(file_path):
     """Main document processing pipeline"""
+    start_time = datetime.now()
+    logger.info(f"Started processing document: {file_path} at {start_time}")
+    
     neo4j = Neo4jConnection()
     current_context = []
-    
-    print(f"Processing document: {file_path}")
+    chunk_number = 0
     
     with open(file_path, 'r') as file:
-        for chunk in chunk_iterator(file):
+        for chunk_number, chunk in enumerate(chunk_iterator(file), 1):
             try:
                 # Process chunk with context
+                context = get_context(current_context)
+                logger.info(f"Processing chunk {chunk_number} with context:\n{context}")
+                
                 xml_result = process_with_recovery(
                     chunk,
-                    get_context(current_context)
+                    context,
+                    chunk_number
                 )
                 
                 # Update Neo4j
@@ -344,11 +402,18 @@ def process_document(file_path):
                 # Update rolling context
                 update_context(current_context, xml_result)
                 
-                print("Chunk processed successfully")
+                logger.info(f"Chunk {chunk_number} processed successfully")
+                
+                # Log rolling context
+                logger.info(f"Rolling context after chunk {chunk_number}:\n{json.dumps(current_context, indent=2)}")
                 
             except Exception as e:
-                print(f"Error processing chunk: {e}")
+                logger.error(f"Error processing chunk {chunk_number}: {e}")
                 continue
+
+    end_time = datetime.now()
+    duration = end_time - start_time
+    logger.info(f"Finished processing document at {end_time}. Total duration: {duration}")
 
 if __name__ == "__main__":
     import sys
