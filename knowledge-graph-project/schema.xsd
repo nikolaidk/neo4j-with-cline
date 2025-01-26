@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+    <xs:element name="analysis">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="concepts">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="concept" maxOccurs="unbounded">
+                                <xs:complexType>
+                                    <xs:sequence>
+                                        <xs:element name="name" type="xs:string"/>
+                                        <xs:element name="type" type="xs:string"/>
+                                        <xs:element name="description" type="xs:string"/>
+                                        <xs:element name="confidence" type="xs:decimal"/>
+                                        <xs:element name="source">
+                                            <xs:complexType>
+                                                <xs:sequence>
+                                                    <xs:element name="position" type="xs:integer"/>
+                                                    <xs:element name="context" type="xs:string"/>
+                                                </xs:sequence>
+                                            </xs:complexType>
+                                        </xs:element>
+                                        <xs:element name="hierarchy">
+                                            <xs:complexType>
+                                                <xs:sequence>
+                                                    <xs:element name="parent" type="xs:string" minOccurs="0"/>
+                                                    <xs:element name="level" type="xs:integer"/>
+                                                </xs:sequence>
+                                            </xs:complexType>
+                                        </xs:element>
+                                        <xs:element name="version" type="xs:integer"/>
+                                        <xs:element name="references">
+                                            <xs:complexType>
+                                                <xs:sequence>
+                                                    <xs:element name="reference" type="xs:string" maxOccurs="unbounded"/>
+                                                </xs:sequence>
+                                            </xs:complexType>
+                                        </xs:element>
+                                    </xs:sequence>
+                                </xs:complexType>
+                            </xs:element>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+                <xs:element name="relationships">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="relationship" maxOccurs="unbounded">
+                                <xs:complexType>
+                                    <xs:sequence>
+                                        <xs:element name="source" type="xs:string"/>
+                                        <xs:element name="type" type="xs:string"/>
+                                        <xs:element name="target" type="xs:string"/>
+                                        <xs:element name="metadata">
+                                            <xs:complexType>
+                                                <xs:sequence>
+                                                    <xs:element name="confidence" type="xs:decimal"/>
+                                                    <xs:element name="bidirectional_strength">
+                                                        <xs:complexType>
+                                                            <xs:sequence>
+                                                                <xs:element name="forward" type="xs:decimal"/>
+                                                                <xs:element name="backward" type="xs:decimal"/>
+                                                            </xs:sequence>
+                                                        </xs:complexType>
+                                                    </xs:element>
+                                                    <xs:element name="temporal">
+                                                        <xs:complexType>
+                                                            <xs:sequence>
+                                                                <xs:element name="first_seen" type="xs:dateTime"/>
+                                                                <xs:element name="last_seen" type="xs:dateTime"/>
+                                                            </xs:sequence>
+                                                        </xs:complexType>
+                                                    </xs:element>
+                                                    <xs:element name="classification">
+                                                        <xs:complexType>
+                                                            <xs:sequence>
+                                                                <xs:element name="category" type="xs:string"/>
+                                                                <xs:element name="directness" type="xs:string"/>
+                                                                <xs:element name="strength" type="xs:string"/>
+                                                            </xs:sequence>
+                                                        </xs:complexType>
+                                                    </xs:element>
+                                                    <xs:element name="provenance">
+                                                        <xs:complexType>
+                                                            <xs:sequence>
+                                                                <xs:element name="source_context" type="xs:string"/>
+                                                                <xs:element name="extraction_method" type="xs:string"/>
+                                                            </xs:sequence>
+                                                        </xs:complexType>
+                                                    </xs:element>
+                                                </xs:sequence>
+                                            </xs:complexType>
+                                        </xs:element>
+                                        <xs:element name="properties">
+                                            <xs:complexType>
+                                                <xs:sequence>
+                                                    <xs:element name="property" maxOccurs="unbounded">
+                                                        <xs:complexType>
+                                                            <xs:simpleContent>
+                                                                <xs:extension base="xs:string">
+                                                                    <xs:attribute name="name" type="xs:string"/>
+                                                                </xs:extension>
+                                                            </xs:simpleContent>
+                                                        </xs:complexType>
+                                                    </xs:element>
+                                                </xs:sequence>
+                                            </xs:complexType>
+                                        </xs:element>
+                                    </xs:sequence>
+                                </xs:complexType>
+                            </xs:element>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+</xs:schema>
